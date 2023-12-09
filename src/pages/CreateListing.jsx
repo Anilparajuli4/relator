@@ -1,45 +1,53 @@
 import { useState } from "react";
-import Spinner from "../components/Spinner";
 import { toast } from "react-toastify";
 import {
+  getStorage,
   ref,
   uploadBytesResumable,
   getDownloadURL,
-  connectStorageEmulator,
 } from "firebase/storage";
-import { auth, db, storage } from "../firebase/Firebase";
+import { getAuth } from "firebase/auth";
 import { v4 as uuidv4 } from "uuid";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import Spinner from "../components/Spinner";
+import { db } from "../firebase/Firebase";
 
-function CreateListing() {
+export default function CreateListing() {
+  const navigate = useNavigate();
+  const auth = getAuth();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    type: "sale",
-    bathrooms: 1,
+    type: "rent",
+    name: "",
     bedrooms: 1,
+    bathrooms: 1,
     parking: false,
     furnished: false,
     address: "",
     description: "",
     offer: false,
-    regular: 0,
-    discount: 0,
+    regularPrice: 0,
+    discountedPrice: 0,
+    latitude: 0,
+    longitude: 0,
     images: {},
   });
   const {
     type,
-    bathrooms,
+    name,
     bedrooms,
+    bathrooms,
     parking,
-    furnished,
     address,
+    furnished,
     description,
     offer,
-    regular,
-    discount,
+    regularPrice,
+    discountedPrice,
+
     images,
   } = formData;
-
   function onChange(e) {
     let boolean = null;
     if (e.target.value === "true") {
@@ -48,28 +56,27 @@ function CreateListing() {
     if (e.target.value === "false") {
       boolean = false;
     }
-    //files
+    // Files
     if (e.target.files) {
-      setFormData((prevstate) => ({
-        ...prevstate,
+      setFormData((prevState) => ({
+        ...prevState,
         images: e.target.files,
       }));
     }
-    //text/boolean/Number
+    // Text/Boolean/Number
     if (!e.target.files) {
-      setFormData((prevstate) => ({
-        ...prevstate,
+      setFormData((prevState) => ({
+        ...prevState,
         [e.target.id]: boolean ?? e.target.value,
       }));
     }
   }
-
   async function onSubmit(e) {
     e.preventDefault();
     setLoading(true);
-    if (discount >= regular) {
+    if (+discountedPrice >= +regularPrice) {
       setLoading(false);
-      toast.error("Discount need to be less than regular");
+      toast.error("Discounted price needs to be less than regular price");
       return;
     }
     if (images.length > 6) {
@@ -80,8 +87,9 @@ function CreateListing() {
 
     async function storeImage(image) {
       return new Promise((resolve, reject) => {
-        const fileName = `${auth.currentUser.uid}-${image.name}-${uuidv4()}`;
-        const storageRef = ref(storage, fileName);
+        const storage = getStorage();
+        const filename = `${auth.currentUser.uid}-${image.name}-${uuidv4()}`;
+        const storageRef = ref(storage, filename);
         const uploadTask = uploadBytesResumable(storageRef, image);
         uploadTask.on(
           "state_changed",
@@ -108,12 +116,13 @@ function CreateListing() {
             // Handle successful uploads on complete
             // For instance, get the download URL: https://firebasestorage.googleapis.com/...
             getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-              resolve("File available at", downloadURL);
+              resolve(downloadURL);
             });
           }
         );
       });
     }
+
     const imgUrls = await Promise.all(
       [...images].map((image) => storeImage(image))
     ).catch((error) => {
@@ -121,6 +130,7 @@ function CreateListing() {
       toast.error("Images not uploaded");
       return;
     });
+
     const formDataCopy = {
       ...formData,
       imgUrls,
@@ -128,94 +138,98 @@ function CreateListing() {
       userRef: auth.currentUser.uid,
     };
     delete formDataCopy.images;
-    !formDataCopy.offer && delete formDataCopy.discount;
+    !formDataCopy.offer && delete formDataCopy.discountedPrice;
     const docRef = await addDoc(collection(db, "listings"), formDataCopy);
-    console.log(docRef);
     setLoading(false);
     toast.success("Listing created");
+    // navigate(`/category/${formDataCopy.type}/${docRef.id}`);
   }
+
   if (loading) {
     return <Spinner />;
   }
   return (
-    <div className="max-w-md px-2 mx-auto">
-      <h1 className="text-3xl text-center font-bold mt-4">Create a Listing</h1>
+    <main className="max-w-md px-2 mx-auto">
+      <h1 className="text-3xl text-center mt-6 font-bold">Create a Listing</h1>
       <form onSubmit={onSubmit}>
-        <p className="font-semibold text-lg mt-6">Sell/Rent</p>
-        <div className="flex ">
+        <p className="text-lg mt-6 font-semibold">Sell / Rent</p>
+        <div className="flex">
           <button
-            value="sale"
             type="button"
             id="type"
+            value="sale"
             onClick={onChange}
-            className={`py-2 px-7  w-full uppercase font-medium shadow-md rounded ${
+            className={`mr-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
               type === "rent"
                 ? "bg-white text-black"
-                : "bg-slate-500 text-white"
+                : "bg-slate-600 text-white"
             }`}
           >
-            sale
+            sell
           </button>
           <button
-            value="rent"
             type="button"
             id="type"
+            value="rent"
             onClick={onChange}
-            className={`py-3 px-7 ml-3 w-full font-medium uppercase shadow-md rounded ${
+            className={`ml-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
               type === "sale"
                 ? "bg-white text-black"
-                : "bg-slate-500 text-white"
+                : "bg-slate-600 text-white"
             }`}
           >
-            Rent
+            rent
           </button>
         </div>
-        <div>
-          <p className="font-semi-bold text-lg shadow-md mt-6">Name</p>
-          <input
-            type="text"
-            className="w-full py-3 rounded px-3 text-lg"
-            placeholder="Name"
-            onChange={onChange}
-          />
-        </div>
-        <div className="flex gap-4">
+        <p className="text-lg mt-6 font-semibold">Name</p>
+        <input
+          type="text"
+          id="name"
+          value={name}
+          onChange={onChange}
+          placeholder="Name"
+          maxLength="32"
+          minLength="10"
+          required
+          className="w-full px-4 py-2 text-xl text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:text-gray-700 focus:bg-white focus:border-slate-600 mb-6"
+        />
+        <div className="flex space-x-6 mb-6">
           <div>
-            <p className="font-semibold text-lg shadow-md mt-6">Beds</p>
+            <p className="text-lg font-semibold">Beds</p>
             <input
               type="number"
-              className="px-3 py-3 w-full rounded text-lg"
               id="bedrooms"
-              min="1"
-              max="50"
               value={bedrooms}
               onChange={onChange}
+              min="1"
+              max="50"
               required
+              className="w-full px-4 py-2 text-xl text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:text-gray-700 focus:bg-white focus:border-slate-600 text-center"
             />
           </div>
           <div>
-            <p className="font-semi-bold text-lg shadow-md mt-6">Baths</p>
+            <p className="text-lg font-semibold">Baths</p>
             <input
               type="number"
-              className="px-3 py-3 w-full rounded text-lg"
               id="bathrooms"
-              min="1"
-              max="50"
               value={bathrooms}
               onChange={onChange}
+              min="1"
+              max="50"
               required
+              className="w-full px-4 py-2 text-xl text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:text-gray-700 focus:bg-white focus:border-slate-600 text-center"
             />
           </div>
         </div>
-        <p className="font-semibold text-lg mt-6">Parking/spot</p>
-        <div className="flex ">
+        <p className="text-lg mt-6 font-semibold">Parking spot</p>
+        <div className="flex">
           <button
             type="button"
             id="parking"
             value={true}
             onClick={onChange}
-            className={`py-3 px-7  w-full uppercase shadow-md rounded ${
-              !parking ? "bg-white text-black" : "bg-slate-500 text-white"
+            className={`mr-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
+              !parking ? "bg-white text-black" : "bg-slate-600 text-white"
             }`}
           >
             Yes
@@ -225,134 +239,154 @@ function CreateListing() {
             id="parking"
             value={false}
             onClick={onChange}
-            className={`py-2 px-7 ml-3 w-full uppercase shadow-md rounded ${
-              parking ? "bg-white text-black" : "bg-slate-500 text-white"
+            className={`ml-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
+              parking ? "bg-white text-black" : "bg-slate-600 text-white"
             }`}
           >
-            No
+            no
           </button>
         </div>
-        <p className="font-semibold text-lg mt-6">furnished</p>
-        <div className="flex ">
+        <p className="text-lg mt-6 font-semibold">Furnished</p>
+        <div className="flex">
           <button
-            id="furnished"
             type="button"
+            id="furnished"
             value={true}
             onClick={onChange}
-            className={`py-3 px-7  w-full uppercase shadow-md rounded ${
-              !furnished ? "bg-white text-black" : "bg-slate-500 text-white"
+            className={`mr-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
+              !furnished ? "bg-white text-black" : "bg-slate-600 text-white"
             }`}
           >
-            Yes
+            yes
           </button>
           <button
             type="button"
             id="furnished"
             value={false}
             onClick={onChange}
-            className={`py-2 px-7 ml-3 w-full uppercase shadow-md rounded ${
-              furnished ? "bg-white text-black" : "bg-slate-500 text-white"
+            className={`ml-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
+              furnished ? "bg-white text-black" : "bg-slate-600 text-white"
             }`}
           >
-            No
+            no
           </button>
         </div>
-        <p className="font-semibold text-lg mt-6">Address</p>
+        <p className="text-lg mt-6 font-semibold">Address</p>
         <textarea
           type="text"
           id="address"
           value={address}
-          placeholder="Address"
           onChange={onChange}
+          placeholder="Address"
           required
-          className="px-3 py-3 w-full rounded text-lg"
+          className="w-full px-4 py-2 text-xl text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:text-gray-700 focus:bg-white focus:border-slate-600 mb-6"
         />
-        <p className="font-semibold text-lg mt-6">Description</p>
+
+        <p className="text-lg font-semibold">Description</p>
         <textarea
           type="text"
-          value={description}
-          placeholder="Description"
-          onChange={onChange}
           id="description"
+          value={description}
+          onChange={onChange}
+          placeholder="Description"
           required
-          className="px-3 py-3 w-full rounded text-lg"
+          className="w-full px-4 py-2 text-xl text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:text-gray-700 focus:bg-white focus:border-slate-600 mb-6"
         />
-        <p className="font-semibold text-lg mt-6">Offer</p>
-        <div className="flex ">
+        <p className="text-lg font-semibold">Offer</p>
+        <div className="flex mb-6">
           <button
-            id="offer"
             type="button"
+            id="offer"
             value={true}
             onClick={onChange}
-            className={`py-3 px-7  w-full uppercase shadow-md rounded ${
-              !offer ? "bg-white text-black" : "bg-slate-500 text-white"
+            className={`mr-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
+              !offer ? "bg-white text-black" : "bg-slate-600 text-white"
             }`}
           >
-            Yes
+            yes
           </button>
           <button
             type="button"
             id="offer"
             value={false}
             onClick={onChange}
-            className={`py-2 px-7 ml-3 w-full uppercase shadow-md rounded ${
-              offer ? "bg-white text-black" : "bg-slate-500 text-white"
+            className={`ml-3 px-7 py-3 font-medium text-sm uppercase shadow-md rounded hover:shadow-lg focus:shadow-lg active:shadow-lg transition duration-150 ease-in-out w-full ${
+              offer ? "bg-white text-black" : "bg-slate-600 text-white"
             }`}
           >
-            No
+            no
           </button>
         </div>
-        <p className="font-semibold text-lg mt-6">Regular Price</p>
-        <div className="flex ">
-          <input
-            type="number"
-            className="px-3 py-3 w-full rounded text-lg"
-            id="regular"
-            min="1"
-            value={regular}
-            onChange={onChange}
-            required
-          />
-          <p className="font-semi-bold text-lg shadow-md mt-6 ml-4 text-center">
-            $/Month
-          </p>
+        <div className="flex items-center mb-6">
+          <div className="">
+            <p className="text-lg font-semibold">Regular price</p>
+            <div className="flex w-full justify-center items-center space-x-6">
+              <input
+                type="number"
+                id="regularPrice"
+                value={regularPrice}
+                onChange={onChange}
+                min="50"
+                max="400000000"
+                required
+                className="w-full px-4 py-2 text-xl text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:text-gray-700 focus:bg-white focus:border-slate-600 text-center"
+              />
+              {type === "rent" && (
+                <div className="">
+                  <p className="text-md w-full whitespace-nowrap">$ / Month</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         {offer && (
-          <div className="mt-6">
-            <p className="font-semibold text-lg">Discounted Price</p>
-            <input
-              type="number"
-              className="px-3 py-3 w-[50%] rounded text-lg"
-              id="discount"
-              min="50"
-              max="40000000"
-              value={discount}
-              onChange={onChange}
-              required
-            />
+          <div className="flex items-center mb-6">
+            <div className="">
+              <p className="text-lg font-semibold">Discounted price</p>
+              <div className="flex w-full justify-center items-center space-x-6">
+                <input
+                  type="number"
+                  id="discountedPrice"
+                  value={discountedPrice}
+                  onChange={onChange}
+                  min="50"
+                  max="400000000"
+                  required={offer}
+                  className="w-full px-4 py-2 text-xl text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:text-gray-700 focus:bg-white focus:border-slate-600 text-center"
+                />
+                {type === "rent" && (
+                  <div className="">
+                    <p className="text-md w-full whitespace-nowrap">
+                      $ / Month
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
-        <div className="mt-3">
-          <p className="font-semibold text-lg">Images</p>
-          <p>The first images will be the cover (max6)</p>
+        <div className="mb-6">
+          <p className="text-lg font-semibold">Images</p>
+          <p className="text-gray-600">
+            The first image will be the cover (max 6)
+          </p>
           <input
             type="file"
             id="images"
-            accept=".jpg, .png, .jpeg"
             onChange={onChange}
+            accept=".jpg,.png,.jpeg"
             multiple
             required
+            className="w-full px-3 py-1.5 text-gray-700 bg-white border border-gray-300 rounded transition duration-150 ease-in-out focus:bg-white focus:border-slate-600"
           />
         </div>
         <button
           type="submit"
-          className="bg-blue-500 w-full px-6 py-3 uppercase rounded mt-8 mb-2 text-white"
+          className="mb-6 w-full px-7 py-3 bg-blue-600 text-white font-medium text-sm uppercase rounded shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out"
         >
           Create Listing
         </button>
       </form>
-    </div>
+    </main>
   );
 }
-
-export default CreateListing;
